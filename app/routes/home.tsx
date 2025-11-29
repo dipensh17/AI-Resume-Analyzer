@@ -68,9 +68,13 @@ export default function Home() {
   }, []);
 
   const filteredDbRecords = useMemo(() => {
-    if (!searchTerm) return dbRecords;
-    const q = searchTerm.toLowerCase();
-    return dbRecords.filter(r => (r.jobTitle || '').toLowerCase().includes(q));
+    const q = (searchTerm || '').toLowerCase();
+    const filtered = q
+      ? dbRecords.filter(r => (r.jobTitle || '').toLowerCase().includes(q))
+      : dbRecords.slice();
+    // sort descending by score (highest first)
+    filtered.sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
+    return filtered;
   }, [dbRecords, searchTerm]);
 
   // Create object URLs for file blobs to be used as links
