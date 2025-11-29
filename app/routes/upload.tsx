@@ -2,6 +2,7 @@ import {type FormEvent, useState} from 'react'
 import Navbar from "~/components/Navbar";
 import FileUploader from "~/components/FileUploader";
 import {usePuterStore} from "~/lib/puter";
+import { addResume } from "~/lib/db";
 import {useNavigate} from "react-router";
 import {convertPdfToImage} from "~/lib/pdf2img";
 import {generateUUID} from "~/lib/utils";
@@ -58,6 +59,20 @@ const Upload = () => {
 
         data.feedback = JSON.parse(feedbackText);
         await kv.set(`resume:${uuid}`, JSON.stringify(data));
+        // Persist a summary record to local IndexedDB for history/offline
+        try {
+            const score = (data.feedback as any)?.ATS?.score ?? (data.feedback as any)?.overallScore ?? 0;
+            const username = auth.user?.username || 'Anonymous';
+            await addResume({
+                username,
+                filename: file.name,
+                file,
+                jobTitle,
+                score,
+            });
+        } catch (err) {
+            console.warn('Failed to save resume to local DB', err);
+        }
         setStatusText('Analysis complete, redirecting...');
         console.log(data);
         navigate(`/resume/${uuid}`);
