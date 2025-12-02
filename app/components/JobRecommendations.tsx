@@ -36,22 +36,32 @@ const JobRecommendations: React.FC<{ feedback: Feedback }> = ({ feedback }) => {
 
       const text = parts.join('. ');
 
-      try {
-        const res = await fetch('http://127.0.0.1:5000/recommend', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ text, n: 5 }),
-        });
+        try {
+          // Try embeddings-based recommender first (port 5001). If it's not available, fall back to keyword server (5000).
+          let res = await fetch('http://127.0.0.1:5001/recommend', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text, n: 5 }),
+          });
 
-        if (!res.ok) throw new Error(`Server returned ${res.status}`);
-        const json = await res.json();
-        setRecs(json.recommendations || null);
-      } catch (err: any) {
-        setError('Recommendation service not available. Run the local recommender server if you want live suggestions.');
-        setRecs(null);
-      } finally {
-        setLoading(false);
-      }
+          if (!res.ok) {
+            // fallback
+            res = await fetch('http://127.0.0.1:5000/recommend', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ text, n: 5 }),
+            });
+          }
+
+          if (!res.ok) throw new Error(`Server returned ${res.status}`);
+          const json = await res.json();
+          setRecs(json.recommendations || null);
+        } catch (err: any) {
+          setError('Recommendation service not available. Run the local recommender server(s) if you want live suggestions.');
+          setRecs(null);
+        } finally {
+          setLoading(false);
+        }
     }
 
     fetchRecs();
