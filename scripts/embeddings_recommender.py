@@ -26,7 +26,24 @@ def _normalize(text: str) -> str:
 class EmbeddingsRecommender:
     def __init__(self, model_name: str = "all-MiniLM-L6-v2"):
         self.model_name = model_name
-        self.model = SentenceTransformer(self.model_name)
+        # Try to instantiate the SentenceTransformer normally. Some environments
+        # (with torch meta tensors / lazy init) may raise a NotImplementedError
+        # like: "Cannot copy out of meta tensor; no data!" when moving a module
+        # from 'meta' to a device. In that case, fall back to creating the
+        # model directly on CPU to avoid meta-device moves.
+        try:
+            self.model = SentenceTransformer(self.model_name)
+        except Exception as e:
+            msg = str(e)
+            if "meta" in msg or "Cannot copy out of meta tensor" in msg or isinstance(e, NotImplementedError):
+                # fallback
+                print(
+                    "Warning: model instantiation hit a meta-tensor error — falling back to CPU instantiation."
+                )
+                self.model = SentenceTransformer(self.model_name, device="cpu")
+            else:
+                # re-raise unexpected errors
+                raise
         self.job_keys = list(JOB_KEYWORDS.keys())
         self.job_texts = [self._build_job_text(k) for k in self.job_keys]
         self.job_embeddings = self.model.encode(self.job_texts, convert_to_numpy=True)

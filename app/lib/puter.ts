@@ -94,6 +94,9 @@ interface PuterStore {
 
     init: () => void;
     clearError: () => void;
+    // flag for showing a login-required overlay when the user's session has expired
+    loginRequired: boolean;
+    clearLoginRequired: () => void;
 }
 
 const getPuter = (): typeof window.puter | null =>
@@ -139,6 +142,8 @@ export const usePuterStore = create<PuterStore>((set, get) => {
                         checkAuthStatus: get().auth.checkAuthStatus,
                         getUser: () => user,
                     },
+                    // clear any login-required indicator when we successfully fetch user
+                    loginRequired: false,
                     isLoading: false,
                 });
                 return true;
@@ -153,14 +158,35 @@ export const usePuterStore = create<PuterStore>((set, get) => {
                         checkAuthStatus: get().auth.checkAuthStatus,
                         getUser: () => null,
                     },
+                    // if a persistent session exists, show the overlay
+                    loginRequired: !!(typeof window !== "undefined" && window.localStorage.getItem('resumind_session')),
                     isLoading: false,
                 });
                 return false;
             }
         } catch (err) {
-            const msg =
-                err instanceof Error ? err.message : "Failed to check auth status";
-            setError(msg);
+            // If the error looks like an auth 401/unauthorized, treat it as
+            // an expired session — don't surface a global error message.
+            const msg = err instanceof Error ? err.message : String(err);
+            const isUnauthorized = /401|unauthori|unauthenticated/i.test(msg);
+            if (isUnauthorized) {
+                set({
+                    auth: {
+                        user: null,
+                        isAuthenticated: false,
+                        signIn: get().auth.signIn,
+                        signOut: get().auth.signOut,
+                        refreshUser: get().auth.refreshUser,
+                        checkAuthStatus: get().auth.checkAuthStatus,
+                        getUser: () => null,
+                    },
+                    loginRequired: true,
+                    isLoading: false,
+                });
+                return false;
+            }
+
+            setError("Failed to check auth status");
             return false;
         }
     };
@@ -176,6 +202,8 @@ export const usePuterStore = create<PuterStore>((set, get) => {
 
         try {
             await puter.auth.signIn();
+            // persist session intent so we can attempt to re-auth later
+            if (typeof window !== "undefined") window.localStorage.setItem('resumind_session', '1');
             await checkAuthStatus();
         } catch (err) {
             const msg = err instanceof Error ? err.message : "Sign in failed";
@@ -194,6 +222,7 @@ export const usePuterStore = create<PuterStore>((set, get) => {
 
         try {
             await puter.auth.signOut();
+            if (typeof window !== "undefined") window.localStorage.removeItem('resumind_session');
             set({
                 auth: {
                     user: null,
@@ -233,11 +262,31 @@ export const usePuterStore = create<PuterStore>((set, get) => {
                     checkAuthStatus: get().auth.checkAuthStatus,
                     getUser: () => user,
                 },
+                loginRequired: false,
                 isLoading: false,
             });
         } catch (err) {
-            const msg = err instanceof Error ? err.message : "Failed to refresh user";
-            setError(msg);
+            const msg = err instanceof Error ? err.message : String(err);
+            const isUnauthorized = /401|unauthori|unauthenticated/i.test(msg);
+            if (isUnauthorized) {
+                // treat as expired session — show login overlay, but don't set global error
+                set({
+                    auth: {
+                        user: null,
+                        isAuthenticated: false,
+                        signIn: get().auth.signIn,
+                        signOut: get().auth.signOut,
+                        refreshUser: get().auth.refreshUser,
+                        checkAuthStatus: get().auth.checkAuthStatus,
+                        getUser: () => null,
+                    },
+                    loginRequired: true,
+                    isLoading: false,
+                });
+                return;
+            }
+
+            setError("Failed to refresh user");
         }
     };
 
@@ -245,7 +294,14 @@ export const usePuterStore = create<PuterStore>((set, get) => {
         const puter = getPuter();
         if (puter) {
             set({ puterReady: true });
-            checkAuthStatus();
+            // only check auth status proactively if the user previously had a session
+            const shouldCheck = typeof window !== "undefined" && !!window.localStorage.getItem('resumind_session');
+            if (shouldCheck) {
+                checkAuthStatus();
+            } else {
+                // nothing to check — clear the initial loading flag so UI can render
+                set({ isLoading: false });
+            }
             return;
         }
 
@@ -253,7 +309,12 @@ export const usePuterStore = create<PuterStore>((set, get) => {
             if (getPuter()) {
                 clearInterval(interval);
                 set({ puterReady: true });
-                checkAuthStatus();
+                const shouldCheck = typeof window !== "undefined" && !!window.localStorage.getItem('resumind_session');
+                if (shouldCheck) {
+                    checkAuthStatus();
+                } else {
+                    set({ isLoading: false });
+                }
             }
         }, 100);
 
@@ -264,6 +325,8 @@ export const usePuterStore = create<PuterStore>((set, get) => {
             }
         }, 10000);
     };
+
+    const clearLoginRequired = () => set({ loginRequired: false });
 
     const write = async (path: string, data: string | File | Blob) => {
         const puter = getPuter();
@@ -452,5 +515,8 @@ export const usePuterStore = create<PuterStore>((set, get) => {
         },
         init,
         clearError: () => set({ error: null }),
+        // overlay flag for expired/required login
+        loginRequired: false,
+        clearLoginRequired,
     };
 });

@@ -9,7 +9,18 @@ from embeddings_recommender import EmbeddingsRecommender
 import os
 
 app = Flask(__name__)
-CORS(app)
+# Enable CORS for all routes/origins and ensure preflight/options are handled.
+CORS(app, resources={r"/*": {"origins": "*"}}, supports_credentials=True)
+
+
+@app.after_request
+def add_cors_headers(response):
+    # Ensure all responses (including errors) carry CORS headers so browsers
+    # don't block responses when preflighting or when server errors occur.
+    response.headers.setdefault('Access-Control-Allow-Origin', '*')
+    response.headers.setdefault('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
+    response.headers.setdefault('Access-Control-Allow-Headers', 'Content-Type, Authorization')
+    return response
 
 # Load model once
 MODEL_NAME = os.environ.get("EMB_MODEL", "all-MiniLM-L6-v2")
@@ -23,15 +34,23 @@ def get_recommender():
     return recommender
 
 
-@app.route("/recommend", methods=["POST"])
+@app.route("/recommend", methods=["POST", "OPTIONS"])
 def recommend():
+    # Handle preflight
+    if request.method == "OPTIONS":
+        return (jsonify({}), 200)
     data = request.get_json() or {}
     text = data.get("text", "")
     n = int(data.get("n", 5))
     rec = get_recommender().recommend(text, n=n)
     # Convert numpy floats to python floats
     out = [
-        {"title": r["title"], "score": float(r["score"]), "explanation": r.get("explanation", "")}
+        {
+            "title": r["title"],
+            # convert similarity (0..1) to integer percentage (e.g. 0.3534 -> 35)
+            "score": int(round(float(r["score"]) * 100)),
+            "explanation": r.get("explanation", ""),
+        }
         for r in rec
     ]
     return jsonify({"recommendations": out})
