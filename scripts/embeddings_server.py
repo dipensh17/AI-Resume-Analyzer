@@ -60,9 +60,36 @@ def recommend():
     if request.method == "OPTIONS":
         return (jsonify({}), 200)
     data = request.get_json() or {}
+    # Basic validation and normalization
     text = data.get("text", "")
-    n = int(data.get("n", 5))
-    rec = get_recommender().recommend(text, n=n)
+    if text is None:
+        text = ""
+    # Ensure it's a string
+    try:
+        text = str(text)
+    except Exception:
+        logging.exception("Failed to coerce text to string")
+        return (jsonify({"error": "Invalid 'text' parameter"}), 400)
+
+    # Truncate very large inputs to avoid OOMs or model failures
+    MAX_CHARS = int(os.environ.get("RECOMMEND_MAX_CHARS", 15000))
+    if len(text) > MAX_CHARS:
+        logging.warning(f"Truncating input text from {len(text)} to {MAX_CHARS} chars")
+        text = text[:MAX_CHARS]
+
+    try:
+        n = int(data.get("n", 5))
+    except Exception:
+        n = 5
+
+    try:
+        rec = get_recommender().recommend(text, n=n)
+    except Exception as e:
+        # Log the exception with traceback and return a JSON error so browser can see it
+        logging.exception("Recommender failed")
+        resp = jsonify({"error": "Recommender failure", "detail": str(e)})
+        return (resp, 500)
+
     # Convert numpy floats to python floats
     out = [
         {

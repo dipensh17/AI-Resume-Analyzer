@@ -1,5 +1,6 @@
 import {Link, useNavigate, useParams} from "react-router";
 import {useEffect, useState} from "react";
+import { extractPdfText } from "~/lib/pdf2img";
 import {usePuterStore} from "~/lib/puter";
 import Summary from "~/components/Summary";
 import ATS from "~/components/ATS";
@@ -17,6 +18,7 @@ const Resume = () => {
     const [imageUrl, setImageUrl] = useState('');
     const [resumeUrl, setResumeUrl] = useState('');
     const [feedback, setFeedback] = useState<Feedback | null>(null);
+    const [pdfText, setPdfText] = useState<string | null>(null);
     const navigate = useNavigate();
 
     useEffect(() => {
@@ -37,6 +39,15 @@ const Resume = () => {
             const pdfBlob = new Blob([resumeBlob], { type: 'application/pdf' });
             const resumeUrl = URL.createObjectURL(pdfBlob);
             setResumeUrl(resumeUrl);
+
+            // Extract text from the PDF to feed the recommender (prefer user's original text)
+            try {
+                const text = await extractPdfText(pdfBlob);
+                setPdfText(text || null);
+            } catch (err) {
+                console.warn('Failed to extract PDF text', err);
+                setPdfText(null);
+            }
 
             const imageBlob = await fs.read(data.imagePath);
             if(!imageBlob) return;
@@ -79,7 +90,7 @@ const Resume = () => {
                             <Summary feedback={feedback} />
                             <ATS score={feedback.ATS.score || 0} suggestions={feedback.ATS.tips || []} />
                             <Details feedback={feedback} />
-                            <JobRecommendations feedback={feedback} />
+                            <JobRecommendations feedback={feedback} pdfText={pdfText} />
                         </div>
                     ) : (
                         <img src="/images/resume-scan-2.gif" className="w-full" />
