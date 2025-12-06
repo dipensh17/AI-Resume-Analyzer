@@ -4,6 +4,7 @@ import {usePuterStore} from "~/lib/puter";
 import Summary from "~/components/Summary";
 import ATS from "~/components/ATS";
 import Details from "~/components/Details";
+import JobRecommendations from "~/components/JobRecommendations";
 
 export const meta = () => ([
     { title: 'Resumind | Review ' },
@@ -78,6 +79,7 @@ const Resume = () => {
                             <Summary feedback={feedback} />
                             <ATS score={feedback.ATS.score || 0} suggestions={feedback.ATS.tips || []} />
                             <Details feedback={feedback} />
+                            <JobRecommendations feedback={feedback} />
                         </div>
                     ) : (
                         <img src="/images/resume-scan-2.gif" className="w-full" />
