@@ -2,7 +2,7 @@ import React, {useEffect, useState} from 'react'
 
 type Rec = { title: string; score: number; reason?: string };
 
-const JobRecommendations: React.FC<{ feedback: Feedback }> = ({ feedback }) => {
+const JobRecommendations: React.FC<{ feedback: Feedback; pdfText?: string | null }> = ({ feedback, pdfText }) => {
   const [recs, setRecs] = useState<Rec[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -12,29 +12,35 @@ const JobRecommendations: React.FC<{ feedback: Feedback }> = ({ feedback }) => {
       setLoading(true);
       setError(null);
 
-      // Build a simple text summary from the feedback to send to the recommender
-      const parts: string[] = [];
-      parts.push(`overallScore:${feedback.overallScore}`);
+      // Prefer using original PDF text (provided by user) if available.
+      let text = '';
+      if (pdfText && pdfText.trim().length > 50) {
+        text = pdfText;
+      } else {
+        // Build a simple text summary from the feedback to send to the recommender
+        const parts: string[] = [];
+        parts.push(`overallScore:${feedback.overallScore}`);
 
-      const collectTips = (section: any, name: string) => {
-        if (!section) return;
-        // include both short tip and explanation if available
-        const tipsArr = (section.tips || []).map((t: any) => {
-          const tip = t.tip || '';
-          const explanation = t.explanation || '';
-          return [tip, explanation].filter(Boolean).join('. ');
-        });
-        const tips = tipsArr.join('. ');
-        if (tips) parts.push(`${name}:${tips}`);
+        const collectTips = (section: any, name: string) => {
+          if (!section) return;
+          // include both short tip and explanation if available
+          const tipsArr = (section.tips || []).map((t: any) => {
+            const tip = t.tip || '';
+            const explanation = t.explanation || '';
+            return [tip, explanation].filter(Boolean).join('. ');
+          });
+          const tips = tipsArr.join('. ');
+          if (tips) parts.push(`${name}:${tips}`);
+        }
+
+        collectTips(feedback.ATS, 'ats');
+        collectTips(feedback.toneAndStyle, 'tone');
+        collectTips(feedback.content, 'content');
+        collectTips(feedback.structure, 'structure');
+        collectTips(feedback.skills, 'skills');
+
+        text = parts.join('. ');
       }
-
-      collectTips(feedback.ATS, 'ats');
-      collectTips(feedback.toneAndStyle, 'tone');
-      collectTips(feedback.content, 'content');
-      collectTips(feedback.structure, 'structure');
-      collectTips(feedback.skills, 'skills');
-
-      const text = parts.join('. ');
 
         try {
           // Try embeddings-based recommender first (port 5001). If it's not available, fall back to keyword server (5000).
@@ -65,7 +71,9 @@ const JobRecommendations: React.FC<{ feedback: Feedback }> = ({ feedback }) => {
     }
 
     fetchRecs();
-  }, [feedback]);
+  }, [feedback, pdfText]);
+  // include pdfText as dependency so recommendations refresh when text is available
+  // (React's linting prefers listing, but we keep simple: rebuild when pdfText changes)
 
   return (
     <div className="bg-white rounded-2xl shadow-md w-full p-6">

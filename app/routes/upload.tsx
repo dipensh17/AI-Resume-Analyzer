@@ -55,9 +55,35 @@ const Upload = () => {
 
         const feedbackText = typeof feedback.message.content === 'string'
             ? feedback.message.content
-            : feedback.message.content[0].text;
+            : (Array.isArray(feedback.message.content) ? feedback.message.content[0]?.text : String(feedback.message.content));
 
-        data.feedback = JSON.parse(feedbackText);
+        // Parse the feedback text which is expected to be JSON. Be robust: if parsing fails,
+        // attempt to extract a JSON substring, otherwise store the raw text under `raw`.
+        try {
+            let parsed: any = null;
+            if (typeof feedbackText === 'string') {
+                const trimmed = feedbackText.trim();
+                if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+                    parsed = JSON.parse(trimmed);
+                } else {
+                    // Try to find a JSON object inside the text (model sometimes adds context)
+                    const m = trimmed.match(/\{[\s\S]*\}/);
+                    if (m) {
+                        parsed = JSON.parse(m[0]);
+                    } else {
+                        // fallback: keep raw text under `raw` so UI can show it
+                        parsed = { raw: trimmed };
+                    }
+                }
+            } else {
+                parsed = feedbackText;
+            }
+
+            data.feedback = parsed;
+        } catch (err) {
+            console.warn('Failed to parse feedback JSON', err, feedbackText);
+            data.feedback = { raw: typeof feedbackText === 'string' ? feedbackText : String(feedbackText) };
+        }
         await kv.set(`resume:${uuid}`, JSON.stringify(data));
         // Persist a summary record to local IndexedDB for history/offline
         try {

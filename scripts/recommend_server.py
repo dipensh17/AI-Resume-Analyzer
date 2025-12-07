@@ -17,8 +17,29 @@ CORS(app)
 def recommend():
     data = request.get_json() or {}
     text = data.get("text", "")
-    n = int(data.get("n", 5))
-    recs = recommend_jobs(text, n=n)
+    if text is None:
+        text = ""
+    try:
+        text = str(text)
+    except Exception:
+        return (jsonify({"error": "Invalid 'text' parameter"}), 400)
+
+    MAX_CHARS = int(os.environ.get("RECOMMEND_MAX_CHARS", 15000))
+    if len(text) > MAX_CHARS:
+        text = text[:MAX_CHARS]
+
+    try:
+        n = int(data.get("n", 5))
+    except Exception:
+        n = 5
+
+    try:
+        recs = recommend_jobs(text, n=n)
+    except Exception as e:
+        import logging
+        logging.exception("recommend_jobs failed")
+        return (jsonify({"error": "recommend_jobs error", "detail": str(e)}), 500)
+
     return jsonify({"recommendations": recs})
 
 

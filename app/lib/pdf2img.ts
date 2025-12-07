@@ -83,3 +83,26 @@ export async function convertPdfToImage(
         };
     }
 }
+
+// Extract text from all pages of a PDF File or Blob using pdfjs
+export async function extractPdfText(file: File | Blob): Promise<string> {
+    try {
+        const lib = await loadPdfJs();
+        const arrayBuffer = await (file instanceof File ? file.arrayBuffer() : file.arrayBuffer());
+        const pdf = await lib.getDocument({ data: arrayBuffer }).promise;
+        const maxPages = pdf.numPages;
+        const pageTexts: string[] = [];
+
+        for (let i = 1; i <= maxPages; i++) {
+            const page = await pdf.getPage(i);
+            const content = await page.getTextContent();
+            const strings = content.items.map((it: any) => (it.str || ''));
+            pageTexts.push(strings.join(' '));
+        }
+
+        return pageTexts.join('\n\n');
+    } catch (err) {
+        console.warn('extractPdfText failed', err);
+        return '';
+    }
+}
